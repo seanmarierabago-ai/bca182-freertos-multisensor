@@ -8,6 +8,7 @@ struct SensorData {
     int lightLevel;
     bool motionDetected;
     bool dhtValid;
+    bool lightValid;
 };
 
 enum class DisplayMode : uint8_t {

@@ -180,6 +180,16 @@ bool LDR_ReadRaw(uint16_t *reading)
     return HAL_ADC_Stop(&hadc1) == HAL_OK;
 }
 
+bool Motion_Read(bool *detected)
+{
+    if (detected == nullptr) {
+        return false;
+    }
+
+    *detected = HAL_GPIO_ReadPin(GPIOB, GPIO_PIN_1) == GPIO_PIN_SET;
+    return true;
+}
+
 namespace {
 
 void MX_GPIO_Init(void)

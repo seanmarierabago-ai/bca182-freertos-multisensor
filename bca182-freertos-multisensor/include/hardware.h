@@ -19,4 +19,5 @@ void Hardware_Init(void);
 bool Hardware_VectorTableOk(void);
 bool DHT22_Read(float *temperature, float *humidity);
 bool LDR_ReadRaw(uint16_t *reading);
+bool Motion_Read(bool *detected);
 void Buzzer_Set(bool enabled);
