@@ -6,6 +6,7 @@
 #include "serial_log.h"
 #include "rtos_objects.h"
 #include "oled.h"
+#include "alarm_logic.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -98,13 +99,24 @@ void AlarmTask(void *pvParameters) {
     for (;;) {
         if (xQueueReceive(alarmSensorQueue, &sensorData, portMAX_DELAY) == pdPASS) {
             if (!sensorData.dhtValid) {
+                Buzzer_Set(false);
                 Serial_Print("AlarmTask: temperature unavailable\r\n");
-            } else if (sensorData.temperature < LOW_TEMPERATURE_LIMIT) {
-                Serial_Print("AlarmTask: LOW TEMPERATURE\r\n");
-            } else if (sensorData.temperature > HIGH_TEMPERATURE_LIMIT) {
-                Serial_Print("AlarmTask: HIGH TEMPERATURE\r\n");
             } else {
-                Serial_Print("AlarmTask: normal\r\n");
+                const AlarmState alarmState = evaluateTemperature(sensorData.temperature);
+                Buzzer_Set(alarmState != AlarmState::NORMAL);
+
+                switch (alarmState) {
+                case AlarmState::LOW_TEMPERATURE:
+                    Serial_Print("AlarmTask: LOW TEMPERATURE\r\n");
+                    break;
+                case AlarmState::HIGH_TEMPERATURE:
+                    Serial_Print("AlarmTask: HIGH TEMPERATURE\r\n");
+                    break;
+                case AlarmState::NORMAL:
+                default:
+                    Serial_Print("AlarmTask: normal\r\n");
+                    break;
+                }
             }
         }
     }
