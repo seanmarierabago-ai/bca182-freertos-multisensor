@@ -5,6 +5,7 @@
 #include "task.h"
 #include "semphr.h"
 #include "rtos_objects.h"
+#include "fault_experiments.h"
 
 void Serial_EarlyInit(void)
 {
@@ -56,6 +57,9 @@ void Serial_WriteRaw(const char *text)
 
 void Serial_Print(const char *text)
 {
+#if FAULT_EXPERIMENT_REMOVE_SERIAL_MUTEX
+    Serial_WriteRaw(text);
+#else
     if (serialMutex != nullptr &&
         xTaskGetSchedulerState() == taskSCHEDULER_RUNNING) {
         if (xSemaphoreTake(serialMutex, portMAX_DELAY) == pdTRUE) {
@@ -66,4 +70,5 @@ void Serial_Print(const char *text)
     }
 
     Serial_WriteRaw(text);
+#endif
 }
