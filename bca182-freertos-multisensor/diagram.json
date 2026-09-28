@@ -1,0 +1,37 @@
+{
+  "version": 1,
+  "author": "Sean Marie",
+  "editor": "wokwi",
+  "parts": [
+    { "type": "board-stm32-bluepill", "id": "bluepill1", "top": 50, "left": 100, "attrs": {} },
+    { "type": "board-ssd1306", "id": "oled1", "top": -120, "left": 100, "attrs": { "i2cAddress": "0x3c" } },
+    { "type": "wokwi-dht22", "id": "dht1", "top": 20, "left": 350, "attrs": { "temperature": "25", "humidity": "50" } },
+    { "type": "wokwi-photoresistor-sensor", "id": "ldr1", "top": -80, "left": 350, "attrs": {} },
+    { "type": "wokwi-pir-motion-sensor", "id": "pir1", "top": 150, "left": 350, "attrs": {} },
+    { "type": "wokwi-ky-040", "id": "encoder1", "top": 250, "left": 100, "attrs": {} },
+    { "type": "wokwi-buzzer", "id": "buzzer1", "top": 150, "left": -100, "attrs": {} }
+  ],
+  "connections": [
+    ["bluepill1:A9", "$serialMonitor:RX", "", []],
+    ["bluepill1:A10", "$serialMonitor:TX", "", []],
+    ["dht1:VCC", "bluepill1:3V3", "red", []],
+    ["dht1:GND", "bluepill1:GND", "black", []],
+    ["dht1:SDA", "bluepill1:A1", "cyan", []],
+    ["ldr1:VCC", "bluepill1:3V3", "red", []],
+    ["ldr1:GND", "bluepill1:GND", "black", []],
+    ["ldr1:AO", "bluepill1:A0", "yellow", []],
+    ["encoder1:VCC", "bluepill1:3V3", "red", []],
+    ["encoder1:GND", "bluepill1:GND", "black", []],
+    ["encoder1:CLK", "bluepill1:A4", "blue", []],
+    ["encoder1:DT", "bluepill1:A5", "green", []],
+    ["pir1:VCC", "bluepill1:3V3", "red", []],
+    ["pir1:GND", "bluepill1:GND", "black", []],
+    ["pir1:OUT", "bluepill1:A3", "orange", []],
+    ["oled1:VCC", "bluepill1:3V3", "red", []],
+    ["oled1:GND", "bluepill1:GND", "black", []],
+    ["oled1:SDA", "bluepill1:B7", "blue", []],
+    ["oled1:SCL", "bluepill1:B6", "yellow", []],
+    ["buzzer1:1", "bluepill1:A2", "purple", []],
+    ["buzzer1:2", "bluepill1:GND", "black", []]
+  ]
+}
