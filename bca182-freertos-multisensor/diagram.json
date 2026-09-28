@@ -31,7 +31,7 @@
     ["oled1:GND", "bluepill1:GND", "black", []],
     ["oled1:SDA", "bluepill1:B7", "blue", []],
     ["oled1:SCL", "bluepill1:B6", "yellow", []],
-    ["buzzer1:1", "bluepill1:A2", "purple", []],
+    ["buzzer1:1", "bluepill1:B10", "purple", []],
     ["buzzer1:2", "bluepill1:GND", "black", []]
   ]
 }
