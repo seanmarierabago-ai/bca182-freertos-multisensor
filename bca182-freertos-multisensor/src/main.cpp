@@ -237,3 +237,4 @@ int main(void) {
 
     while (1) {}
 }
+// Part XI: Mutex to protect Serial Monitor
