@@ -3,7 +3,7 @@
 QueueHandle_t displaySensorQueue = nullptr;
 QueueHandle_t alarmSensorQueue = nullptr;
 QueueHandle_t displayModeQueue = nullptr;
-QueueHandle_t motionStateQueue = nullptr;
+QueueHandle_t systemStateQueue = nullptr;
 QueueSetHandle_t displayQueueSet = nullptr;
 SemaphoreHandle_t serialMutex = nullptr;
 EventGroupHandle_t systemEvents = nullptr;
@@ -13,21 +13,28 @@ bool RtosObjects_Create(void)
     displaySensorQueue = xQueueCreate(1U, sizeof(SensorData));
     alarmSensorQueue = xQueueCreate(1U, sizeof(SensorData));
     displayModeQueue = xQueueCreate(4U, sizeof(DisplayMode));
-    motionStateQueue = xQueueCreate(1U, sizeof(bool));
+    systemStateQueue = xQueueCreate(1U, sizeof(SystemState));
     serialMutex = xSemaphoreCreateMutex();
     systemEvents = xEventGroupCreate();
-    displayQueueSet = xQueueCreateSet(5U);
+    displayQueueSet = xQueueCreateSet(6U);
 
-    if (displayQueueSet != nullptr && displaySensorQueue != nullptr && displayModeQueue != nullptr) {
-        xQueueAddToSet(displaySensorQueue, displayQueueSet);
-        xQueueAddToSet(displayModeQueue, displayQueueSet);
+    const bool displayQueuesAdded = displayQueueSet != nullptr &&
+        displaySensorQueue != nullptr && displayModeQueue != nullptr &&
+        systemStateQueue != nullptr &&
+        xQueueAddToSet(displaySensorQueue, displayQueueSet) == pdPASS &&
+        xQueueAddToSet(displayModeQueue, displayQueueSet) == pdPASS &&
+        xQueueAddToSet(systemStateQueue, displayQueueSet) == pdPASS;
+
+    if (systemEvents != nullptr) {
+        xEventGroupSetBits(systemEvents, EVENT_ACTIVE);
     }
 
     return displaySensorQueue != nullptr &&
            alarmSensorQueue != nullptr &&
            displayModeQueue != nullptr &&
-           motionStateQueue != nullptr &&
+           systemStateQueue != nullptr &&
            serialMutex != nullptr &&
            systemEvents != nullptr &&
-           displayQueueSet != nullptr;
+           displayQueueSet != nullptr &&
+           displayQueuesAdded;
 }

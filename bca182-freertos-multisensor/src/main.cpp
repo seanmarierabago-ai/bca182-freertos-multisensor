@@ -49,29 +49,46 @@ void DisplayTask(void *pvParameters) {
     SensorData latestSensorData = {};
     DisplayMode currentMode = DisplayMode::TEMPERATURE;
     bool haveSensorData = false;
+    bool systemActive = true;
 
-    if (!Oled_Init()) {
+    const bool oledReady = Oled_Init();
+    if (!oledReady) {
         Serial_Print("OLED initialization failed\r\n");
     } else {
         Serial_Print("OLED initialized\r\n");
+        Oled_ShowPage(currentMode, nullptr);
     }
-    Oled_ShowPage(currentMode, nullptr);
 
     for (;;) {
         const QueueSetMemberHandle_t selected = xQueueSelectFromSet(displayQueueSet, portMAX_DELAY);
         if (selected == displaySensorQueue) {
             if (xQueueReceive(displaySensorQueue, &latestSensorData, 0U) == pdPASS) {
                 haveSensorData = true;
+                if (systemActive && oledReady) {
+                    Oled_ShowPage(currentMode, &latestSensorData);
+                }
             }
         } else if (selected == displayModeQueue) {
             xQueueReceive(displayModeQueue, &currentMode, 0U);
-            Serial_Print("Display page changed\r\n");
-        }
-
-        if (haveSensorData) {
-            Oled_ShowPage(currentMode, &latestSensorData);
-        } else {
-            Oled_ShowPage(currentMode, nullptr);
+            if (systemActive && oledReady) {
+                Oled_ShowPage(currentMode, haveSensorData ? &latestSensorData : nullptr);
+            }
+        } else if (selected == systemStateQueue) {
+            SystemState nextState = SystemState::ACTIVE;
+            if (xQueueReceive(systemStateQueue, &nextState, 0U) == pdPASS &&
+                nextState != (systemActive ? SystemState::ACTIVE : SystemState::INACTIVE)) {
+                systemActive = nextState == SystemState::ACTIVE;
+                if (oledReady) {
+                    if (systemActive) {
+                        Oled_SetEnabled(true);
+                        Oled_ShowPage(currentMode, haveSensorData ? &latestSensorData : nullptr);
+                    } else {
+                        Oled_SetEnabled(false);
+                    }
+                }
+                Serial_Print(systemActive ? "System ACTIVE: motion detected\r\n"
+                                         : "System INACTIVE: OLED sleeping\r\n");
+            }
         }
     }
 }
@@ -82,14 +99,59 @@ void InputTask(void *pvParameters) {
     TickType_t lastWakeTime = xTaskGetTickCount();
 
     for (;;) {
-        const int8_t step = Encoder_ReadStep();
-        if (step != 0) {
-            int8_t modeIndex = static_cast<int8_t>(currentMode);
-            modeIndex = static_cast<int8_t>((modeIndex + (step > 0 ? 1 : modeCount - 1)) % modeCount);
-            currentMode = static_cast<DisplayMode>(modeIndex);
-            xQueueSend(displayModeQueue, &currentMode, 0U);
+        if ((xEventGroupGetBits(systemEvents) & EVENT_ACTIVE) != 0U) {
+            const int8_t step = Encoder_ReadStep();
+            if (step != 0) {
+                int8_t modeIndex = static_cast<int8_t>(currentMode);
+                modeIndex = static_cast<int8_t>((modeIndex + (step > 0 ? 1 : modeCount - 1)) % modeCount);
+                currentMode = static_cast<DisplayMode>(modeIndex);
+                xQueueSend(displayModeQueue, &currentMode, 0U);
+            }
         }
         vTaskDelayUntil(&lastWakeTime, pdMS_TO_TICKS(10));
+    }
+}
+
+void MotionTask(void *pvParameters) {
+    SystemState currentState = SystemState::ACTIVE;
+    TickType_t lastMotionTime = xTaskGetTickCount();
+    TickType_t lastWakeTime = lastMotionTime;
+    constexpr TickType_t motionPollPeriod = pdMS_TO_TICKS(100);
+    const TickType_t inactivityTimeout = pdMS_TO_TICKS(INACTIVITY_TIMEOUT_MS);
+    bool previousMotion = false;
+    bool firstSample = true;
+
+    Serial_Print("MotionTask monitoring PIR on PA3\r\n");
+
+    for (;;) {
+        bool motionDetected = false;
+        Motion_Read(&motionDetected);
+        const TickType_t now = xTaskGetTickCount();
+
+        if (firstSample || motionDetected != previousMotion) {
+            Serial_Print(motionDetected ? "PIR PA3: HIGH (motion)\r\n"
+                                        : "PIR PA3: LOW (clear)\r\n");
+            previousMotion = motionDetected;
+            firstSample = false;
+        }
+
+        if (motionDetected) {
+            lastMotionTime = now;
+            if (currentState == SystemState::INACTIVE) {
+                currentState = SystemState::ACTIVE;
+                xEventGroupSetBits(systemEvents, EVENT_ACTIVE | EVENT_MOTION);
+                xQueueOverwrite(systemStateQueue, &currentState);
+                Serial_Print("MotionTask: returning ACTIVE\r\n");
+            }
+        } else if (currentState == SystemState::ACTIVE &&
+                   static_cast<TickType_t>(now - lastMotionTime) >= inactivityTimeout) {
+            currentState = SystemState::INACTIVE;
+            xEventGroupClearBits(systemEvents, EVENT_ACTIVE | EVENT_MOTION);
+            xQueueOverwrite(systemStateQueue, &currentState);
+            Serial_Print("MotionTask: inactivity timeout reached\r\n");
+        }
+
+        vTaskDelayUntil(&lastWakeTime, motionPollPeriod);
     }
 }
 
@@ -137,10 +199,12 @@ int main(void) {
     const BaseType_t displayTaskResult = xTaskCreate(DisplayTask, "DisplayTask", 256, NULL, 1, NULL);
     const BaseType_t alarmTaskResult = xTaskCreate(AlarmTask, "AlarmTask", 256, NULL, 1, NULL);
     const BaseType_t inputTaskResult = xTaskCreate(InputTask, "InputTask", 192, NULL, 1, NULL);
+    const BaseType_t motionTaskResult = xTaskCreate(MotionTask, "MotionTask", 192, NULL, 1, NULL);
     Serial_WriteRaw(sensorTaskResult == pdPASS ? "SensorTask created\r\n" : "SensorTask creation failed\r\n");
     Serial_WriteRaw(displayTaskResult == pdPASS ? "DisplayTask created\r\n" : "DisplayTask creation failed\r\n");
     Serial_WriteRaw(alarmTaskResult == pdPASS ? "AlarmTask created\r\n" : "AlarmTask creation failed\r\n");
     Serial_WriteRaw(inputTaskResult == pdPASS ? "InputTask created\r\n" : "InputTask creation failed\r\n");
+    Serial_WriteRaw(motionTaskResult == pdPASS ? "MotionTask created\r\n" : "MotionTask creation failed\r\n");
     vTaskStartScheduler();
 
     while (1) {}

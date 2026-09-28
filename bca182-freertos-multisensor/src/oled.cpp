@@ -134,6 +134,12 @@ bool Oled_Init(void)
     return true;
 }
 
+bool Oled_SetEnabled(bool enabled)
+{
+    const uint8_t command = enabled ? 0xAFU : 0xAEU;
+    return WriteCommands(&command, 1U);
+}
+
 bool Oled_ShowPage(DisplayMode mode, const SensorData *sensorData)
 {
     char value[22] = "WAITING FOR DATA";

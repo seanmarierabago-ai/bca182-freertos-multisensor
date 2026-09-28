@@ -10,7 +10,7 @@
 extern QueueHandle_t displaySensorQueue;
 extern QueueHandle_t alarmSensorQueue;
 extern QueueHandle_t displayModeQueue;
-extern QueueHandle_t motionStateQueue;
+extern QueueHandle_t systemStateQueue;
 extern QueueSetHandle_t displayQueueSet;
 extern SemaphoreHandle_t serialMutex;
 extern EventGroupHandle_t systemEvents;
