@@ -225,9 +225,9 @@ int main(void) {
 
     const BaseType_t sensorTaskResult = xTaskCreate(SensorTask, "SensorTask", 256, NULL, 2, NULL);
     const BaseType_t displayTaskResult = xTaskCreate(DisplayTask, "DisplayTask", 256, NULL, 1, NULL);
-    const BaseType_t alarmTaskResult = xTaskCreate(AlarmTask, "AlarmTask", 256, NULL, 1, NULL);
-    const BaseType_t inputTaskResult = xTaskCreate(InputTask, "InputTask", 192, NULL, 1, NULL);
-    const BaseType_t motionTaskResult = xTaskCreate(MotionTask, "MotionTask", 192, NULL, 1, NULL);
+    const BaseType_t alarmTaskResult = xTaskCreate(AlarmTask, "AlarmTask", 256, NULL, 2, NULL);
+    const BaseType_t inputTaskResult = xTaskCreate(InputTask, "InputTask", 192, NULL, 3, NULL);
+    const BaseType_t motionTaskResult = xTaskCreate(MotionTask, "MotionTask", 192, NULL, 3, NULL);
     Serial_WriteRaw(sensorTaskResult == pdPASS ? "SensorTask created\r\n" : "SensorTask creation failed\r\n");
     Serial_WriteRaw(displayTaskResult == pdPASS ? "DisplayTask created\r\n" : "DisplayTask creation failed\r\n");
     Serial_WriteRaw(alarmTaskResult == pdPASS ? "AlarmTask created\r\n" : "AlarmTask creation failed\r\n");
