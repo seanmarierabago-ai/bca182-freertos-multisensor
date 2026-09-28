@@ -50,6 +50,7 @@ void DisplayTask(void *pvParameters) {
     DisplayMode currentMode = DisplayMode::TEMPERATURE;
     bool haveSensorData = false;
     bool systemActive = true;
+    bool previousAlarmActive = false;
 
     const bool oledReady = Oled_Init();
     if (!oledReady) {
@@ -64,6 +65,8 @@ void DisplayTask(void *pvParameters) {
         if (selected == displaySensorQueue) {
             if (xQueueReceive(displaySensorQueue, &latestSensorData, 0U) == pdPASS) {
                 haveSensorData = true;
+                latestSensorData.motionDetected =
+                    (xEventGroupGetBits(systemEvents) & EVENT_MOTION) != 0U;
                 if (systemActive && oledReady) {
                     Oled_ShowPage(currentMode, &latestSensorData);
                 }
@@ -75,9 +78,11 @@ void DisplayTask(void *pvParameters) {
             }
         } else if (selected == systemStateQueue) {
             SystemState nextState = SystemState::ACTIVE;
-            if (xQueueReceive(systemStateQueue, &nextState, 0U) == pdPASS &&
-                nextState != (systemActive ? SystemState::ACTIVE : SystemState::INACTIVE)) {
-                systemActive = nextState == SystemState::ACTIVE;
+            if (xQueueReceive(systemStateQueue, &nextState, 0U) == pdPASS) {
+                const bool eventGroupActive =
+                    (xEventGroupGetBits(systemEvents) & EVENT_ACTIVE) != 0U;
+                if (eventGroupActive != systemActive) {
+                    systemActive = eventGroupActive;
                 if (oledReady) {
                     if (systemActive) {
                         Oled_SetEnabled(true);
@@ -88,7 +93,14 @@ void DisplayTask(void *pvParameters) {
                 }
                 Serial_Print(systemActive ? "System ACTIVE: motion detected\r\n"
                                          : "System INACTIVE: OLED sleeping\r\n");
+                }
             }
+        }
+
+        const bool alarmActive = (xEventGroupGetBits(systemEvents) & EVENT_ALARM) != 0U;
+        if (alarmActive != previousAlarmActive) {
+            previousAlarmActive = alarmActive;
+            Serial_Print(alarmActive ? "EVENT_ALARM set\r\n" : "EVENT_ALARM cleared\r\n");
         }
     }
 }
@@ -131,25 +143,34 @@ void MotionTask(void *pvParameters) {
         if (firstSample || motionDetected != previousMotion) {
             Serial_Print(motionDetected ? "PIR PA3: HIGH (motion)\r\n"
                                         : "PIR PA3: LOW (clear)\r\n");
-            previousMotion = motionDetected;
             firstSample = false;
         }
 
         if (motionDetected) {
             lastMotionTime = now;
+            if (!previousMotion || currentState == SystemState::INACTIVE) {
+                xEventGroupSetBits(systemEvents, EVENT_MOTION);
+            }
             if (currentState == SystemState::INACTIVE) {
                 currentState = SystemState::ACTIVE;
-                xEventGroupSetBits(systemEvents, EVENT_ACTIVE | EVENT_MOTION);
+                xEventGroupSetBits(systemEvents, EVENT_ACTIVE);
                 xQueueOverwrite(systemStateQueue, &currentState);
                 Serial_Print("MotionTask: returning ACTIVE\r\n");
             }
-        } else if (currentState == SystemState::ACTIVE &&
-                   static_cast<TickType_t>(now - lastMotionTime) >= inactivityTimeout) {
-            currentState = SystemState::INACTIVE;
-            xEventGroupClearBits(systemEvents, EVENT_ACTIVE | EVENT_MOTION);
-            xQueueOverwrite(systemStateQueue, &currentState);
-            Serial_Print("MotionTask: inactivity timeout reached\r\n");
+        } else {
+            if (previousMotion) {
+                xEventGroupClearBits(systemEvents, EVENT_MOTION);
+            }
+            if (currentState == SystemState::ACTIVE &&
+                static_cast<TickType_t>(now - lastMotionTime) >= inactivityTimeout) {
+                currentState = SystemState::INACTIVE;
+                xEventGroupClearBits(systemEvents, EVENT_ACTIVE);
+                xQueueOverwrite(systemStateQueue, &currentState);
+                Serial_Print("MotionTask: inactivity timeout reached\r\n");
+            }
         }
+
+        previousMotion = motionDetected;
 
         vTaskDelayUntil(&lastWakeTime, motionPollPeriod);
     }
@@ -161,11 +182,18 @@ void AlarmTask(void *pvParameters) {
     for (;;) {
         if (xQueueReceive(alarmSensorQueue, &sensorData, portMAX_DELAY) == pdPASS) {
             if (!sensorData.dhtValid) {
+                xEventGroupClearBits(systemEvents, EVENT_ALARM);
                 Buzzer_Set(false);
                 Serial_Print("AlarmTask: temperature unavailable\r\n");
             } else {
                 const AlarmState alarmState = evaluateTemperature(sensorData.temperature);
-                Buzzer_Set(alarmState != AlarmState::NORMAL);
+                const bool alarmActive = alarmState != AlarmState::NORMAL;
+                if (alarmActive) {
+                    xEventGroupSetBits(systemEvents, EVENT_ALARM);
+                } else {
+                    xEventGroupClearBits(systemEvents, EVENT_ALARM);
+                }
+                Buzzer_Set(alarmActive);
 
                 switch (alarmState) {
                 case AlarmState::LOW_TEMPERATURE:
