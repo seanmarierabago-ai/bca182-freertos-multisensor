@@ -5,6 +5,7 @@
 #include "hardware.h"
 #include "serial_log.h"
 #include "rtos_objects.h"
+#include "oled.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -44,39 +45,50 @@ void SensorTask(void *pvParameters) {
 }
 
 void DisplayTask(void *pvParameters) {
-    SensorData sensorData = {};
-    char output[128];
+    SensorData latestSensorData = {};
+    DisplayMode currentMode = DisplayMode::TEMPERATURE;
+    bool haveSensorData = false;
+
+    if (!Oled_Init()) {
+        Serial_Print("OLED initialization failed\r\n");
+    } else {
+        Serial_Print("OLED initialized\r\n");
+    }
+    Oled_ShowPage(currentMode, nullptr);
 
     for (;;) {
-        if (xQueueReceive(displaySensorQueue, &sensorData, portMAX_DELAY) == pdPASS) {
-            if (sensorData.dhtValid) {
-                const int32_t temperatureTenths = static_cast<int32_t>(sensorData.temperature * 10.0f +
-                    (sensorData.temperature >= 0.0f ? 0.5f : -0.5f));
-                const uint16_t humidityTenths = static_cast<uint16_t>(sensorData.humidity * 10.0f + 0.5f);
-                const int32_t temperatureFraction = temperatureTenths % 10;
-                snprintf(output, sizeof(output),
-                         "DisplayTask: %ld.%ld C, %u.%u%% RH, ",
-                         static_cast<long>(temperatureTenths / 10),
-                         static_cast<long>(temperatureFraction < 0 ? -temperatureFraction : temperatureFraction),
-                         static_cast<unsigned>(humidityTenths / 10U),
-                         static_cast<unsigned>(humidityTenths % 10U));
-            } else {
-                snprintf(output, sizeof(output), "DisplayTask: DHT22 unavailable, ");
+        const QueueSetMemberHandle_t selected = xQueueSelectFromSet(displayQueueSet, portMAX_DELAY);
+        if (selected == displaySensorQueue) {
+            if (xQueueReceive(displaySensorQueue, &latestSensorData, 0U) == pdPASS) {
+                haveSensorData = true;
             }
-
-            const size_t used = strlen(output);
-            if (sensorData.lightValid) {
-                snprintf(output + used, sizeof(output) - used,
-                         "LDR %d%% (scaled, not lux), motion %s\r\n",
-                         sensorData.lightLevel,
-                         sensorData.motionDetected ? "YES" : "NO");
-            } else {
-                snprintf(output + used, sizeof(output) - used,
-                         "LDR unavailable, motion %s\r\n",
-                         sensorData.motionDetected ? "YES" : "NO");
-            }
-            Serial_Print(output);
+        } else if (selected == displayModeQueue) {
+            xQueueReceive(displayModeQueue, &currentMode, 0U);
+            Serial_Print("Display page changed\r\n");
         }
+
+        if (haveSensorData) {
+            Oled_ShowPage(currentMode, &latestSensorData);
+        } else {
+            Oled_ShowPage(currentMode, nullptr);
+        }
+    }
+}
+
+void InputTask(void *pvParameters) {
+    DisplayMode currentMode = DisplayMode::TEMPERATURE;
+    constexpr uint8_t modeCount = 4U;
+    TickType_t lastWakeTime = xTaskGetTickCount();
+
+    for (;;) {
+        const int8_t step = Encoder_ReadStep();
+        if (step != 0) {
+            int8_t modeIndex = static_cast<int8_t>(currentMode);
+            modeIndex = static_cast<int8_t>((modeIndex + (step > 0 ? 1 : modeCount - 1)) % modeCount);
+            currentMode = static_cast<DisplayMode>(modeIndex);
+            xQueueSend(displayModeQueue, &currentMode, 0U);
+        }
+        vTaskDelayUntil(&lastWakeTime, pdMS_TO_TICKS(10));
     }
 }
 
@@ -112,9 +124,11 @@ int main(void) {
     const BaseType_t sensorTaskResult = xTaskCreate(SensorTask, "SensorTask", 256, NULL, 2, NULL);
     const BaseType_t displayTaskResult = xTaskCreate(DisplayTask, "DisplayTask", 256, NULL, 1, NULL);
     const BaseType_t alarmTaskResult = xTaskCreate(AlarmTask, "AlarmTask", 256, NULL, 1, NULL);
+    const BaseType_t inputTaskResult = xTaskCreate(InputTask, "InputTask", 192, NULL, 1, NULL);
     Serial_WriteRaw(sensorTaskResult == pdPASS ? "SensorTask created\r\n" : "SensorTask creation failed\r\n");
     Serial_WriteRaw(displayTaskResult == pdPASS ? "DisplayTask created\r\n" : "DisplayTask creation failed\r\n");
     Serial_WriteRaw(alarmTaskResult == pdPASS ? "AlarmTask created\r\n" : "AlarmTask creation failed\r\n");
+    Serial_WriteRaw(inputTaskResult == pdPASS ? "InputTask created\r\n" : "InputTask creation failed\r\n");
     vTaskStartScheduler();
 
     while (1) {}

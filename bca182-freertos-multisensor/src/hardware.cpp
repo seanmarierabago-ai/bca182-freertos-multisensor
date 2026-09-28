@@ -190,6 +190,42 @@ bool Motion_Read(bool *detected)
     return true;
 }
 
+int8_t Encoder_ReadStep(void)
+{
+    static uint8_t previousState = 0U;
+    static int8_t transitionCount = 0;
+    static bool initialized = false;
+    static const int8_t transitions[16] = {
+         0, -1,  1,  0,
+         1,  0,  0, -1,
+        -1,  0,  0,  1,
+         0,  1, -1,  0
+    };
+
+    const uint8_t clock = HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_4) == GPIO_PIN_SET ? 1U : 0U;
+    const uint8_t data = HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_5) == GPIO_PIN_SET ? 1U : 0U;
+    const uint8_t currentState = static_cast<uint8_t>((clock << 1U) | data);
+
+    if (!initialized) {
+        previousState = currentState;
+        initialized = true;
+        return 0;
+    }
+
+    transitionCount += transitions[(previousState << 2U) | currentState];
+    previousState = currentState;
+
+    if (transitionCount >= 4) {
+        transitionCount = 0;
+        return 1;
+    }
+    if (transitionCount <= -4) {
+        transitionCount = 0;
+        return -1;
+    }
+    return 0;
+}
+
 namespace {
 
 void MX_GPIO_Init(void)
@@ -216,11 +252,11 @@ void MX_GPIO_Init(void)
     GPIO_InitStruct.Pull = GPIO_NOPULL;
     HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
 
-    /* Rotary encoder: CLK=PB12, DT=PB13. */
-    GPIO_InitStruct.Pin = GPIO_PIN_12 | GPIO_PIN_13;
+    /* Rotary encoder: CLK=PA4, DT=PA5. */
+    GPIO_InitStruct.Pin = GPIO_PIN_4 | GPIO_PIN_5;
     GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
     GPIO_InitStruct.Pull = GPIO_PULLUP;
-    HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
+    HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
 
     /* PB10 = TIM2_CH3 buzzer PWM. */
     GPIO_InitStruct.Pin = GPIO_PIN_10;
