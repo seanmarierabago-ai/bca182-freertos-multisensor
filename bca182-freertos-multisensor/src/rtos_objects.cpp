@@ -1,4 +1,5 @@
 #include "rtos_objects.h"
+#include "system_state.h"
 
 QueueHandle_t displaySensorQueue = nullptr;
 QueueHandle_t alarmSensorQueue = nullptr;
@@ -24,10 +25,6 @@ bool RtosObjects_Create(void)
         xQueueAddToSet(displaySensorQueue, displayQueueSet) == pdPASS &&
         xQueueAddToSet(displayModeQueue, displayQueueSet) == pdPASS &&
         xQueueAddToSet(systemStateQueue, displayQueueSet) == pdPASS;
-
-    if (systemEvents != nullptr) {
-        xEventGroupSetBits(systemEvents, EVENT_ACTIVE);
-    }
 
     return displaySensorQueue != nullptr &&
            alarmSensorQueue != nullptr &&
