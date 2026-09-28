@@ -2,6 +2,7 @@
 
 #include "FreeRTOS.h"
 #include "event_groups.h"
+#include "system_state_logic.h"
 
 constexpr EventBits_t EVENT_ACTIVE = (1U << 0);
 constexpr EventBits_t EVENT_MOTION = (1U << 1);

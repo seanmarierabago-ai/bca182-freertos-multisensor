@@ -33,23 +33,24 @@ void MotionTask(void *pvParameters)
             if (!previousMotion || currentState == SystemState::INACTIVE) {
                 SystemState_SetMotionDetected(true);
             }
-            if (currentState == SystemState::INACTIVE) {
-                currentState = SystemState::ACTIVE;
-                SystemState_SetActive(true);
-                xQueueOverwrite(systemStateQueue, &currentState);
-                Serial_Print("MotionTask: returning ACTIVE\r\n");
-            }
         } else {
             if (previousMotion) {
                 SystemState_SetMotionDetected(false);
             }
-            if (currentState == SystemState::ACTIVE &&
-                static_cast<TickType_t>(now - lastMotionTime) >= inactivityTimeout) {
-                currentState = SystemState::INACTIVE;
-                SystemState_SetActive(false);
-                xQueueOverwrite(systemStateQueue, &currentState);
-                Serial_Print("MotionTask: inactivity timeout reached\r\n");
-            }
+        }
+
+        const bool inactivityTimedOut = currentState == SystemState::ACTIVE &&
+            static_cast<TickType_t>(now - lastMotionTime) >= inactivityTimeout;
+        const SystemState nextState = evaluateSystemState(currentState,
+                                                          motionDetected,
+                                                          inactivityTimedOut);
+        if (nextState != currentState) {
+            currentState = nextState;
+            const bool active = currentState == SystemState::ACTIVE;
+            SystemState_SetActive(active);
+            xQueueOverwrite(systemStateQueue, &currentState);
+            Serial_Print(active ? "MotionTask: returning ACTIVE\r\n"
+                                : "MotionTask: inactivity timeout reached\r\n");
         }
 
         previousMotion = motionDetected;
