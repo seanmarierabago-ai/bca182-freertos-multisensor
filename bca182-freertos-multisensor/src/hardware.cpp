@@ -76,6 +76,112 @@ void Buzzer_Set(bool enabled)
 
 namespace {
 
+void DelayMicroseconds(uint16_t delay)
+{
+    const uint16_t start = static_cast<uint16_t>(TIM4->CNT);
+    while (static_cast<uint16_t>(TIM4->CNT - start) < delay) {
+    }
+}
+
+bool WaitForDhtLevel(GPIO_PinState level, uint16_t timeoutUs)
+{
+    const uint16_t start = static_cast<uint16_t>(TIM4->CNT);
+    while (HAL_GPIO_ReadPin(GPIOB, GPIO_PIN_0) != level) {
+        if (static_cast<uint16_t>(TIM4->CNT - start) >= timeoutUs) {
+            return false;
+        }
+    }
+    return true;
+}
+
+} // namespace
+
+bool DHT22_Read(float *temperature, float *humidity)
+{
+    if (temperature == nullptr || humidity == nullptr) {
+        return false;
+    }
+
+    GPIO_InitTypeDef gpio = {};
+    gpio.Pin = GPIO_PIN_0;
+    gpio.Mode = GPIO_MODE_OUTPUT_OD;
+    gpio.Pull = GPIO_PULLUP;
+    gpio.Speed = GPIO_SPEED_FREQ_HIGH;
+    HAL_GPIO_Init(GPIOB, &gpio);
+
+    HAL_GPIO_WritePin(GPIOB, GPIO_PIN_0, GPIO_PIN_RESET);
+    DelayMicroseconds(1100U);
+    HAL_GPIO_WritePin(GPIOB, GPIO_PIN_0, GPIO_PIN_SET);
+    DelayMicroseconds(30U);
+
+    gpio.Mode = GPIO_MODE_INPUT;
+    gpio.Pull = GPIO_PULLUP;
+    HAL_GPIO_Init(GPIOB, &gpio);
+
+    if (!WaitForDhtLevel(GPIO_PIN_RESET, 120U) ||
+        !WaitForDhtLevel(GPIO_PIN_SET, 120U) ||
+        !WaitForDhtLevel(GPIO_PIN_RESET, 120U)) {
+        return false;
+    }
+
+    uint8_t data[5] = {};
+    for (uint8_t bit = 0; bit < 40U; ++bit) {
+        if (!WaitForDhtLevel(GPIO_PIN_SET, 100U)) {
+            return false;
+        }
+
+        const uint16_t highStart = static_cast<uint16_t>(TIM4->CNT);
+        if (!WaitForDhtLevel(GPIO_PIN_RESET, 100U)) {
+            return false;
+        }
+
+        const uint16_t highWidth = static_cast<uint16_t>(TIM4->CNT - highStart);
+        const uint8_t byteIndex = bit / 8U;
+        data[byteIndex] <<= 1U;
+        if (highWidth > 40U) {
+            data[byteIndex] |= 1U;
+        }
+    }
+
+    const uint8_t checksum = static_cast<uint8_t>(data[0] + data[1] + data[2] + data[3]);
+    if (checksum != data[4]) {
+        return false;
+    }
+
+    const uint16_t humidityRaw = static_cast<uint16_t>((data[0] << 8U) | data[1]);
+    uint16_t temperatureRaw = static_cast<uint16_t>((data[2] << 8U) | data[3]);
+    const bool isNegative = (temperatureRaw & 0x8000U) != 0U;
+    temperatureRaw &= 0x7FFFU;
+
+    *humidity = static_cast<float>(humidityRaw) / 10.0f;
+    *temperature = static_cast<float>(temperatureRaw) / 10.0f;
+    if (isNegative) {
+        *temperature = -*temperature;
+    }
+
+    return true;
+}
+
+bool LDR_ReadRaw(uint16_t *reading)
+{
+    if (reading == nullptr || HAL_ADC_Start(&hadc1) != HAL_OK) {
+        return false;
+    }
+
+    const uint16_t start = static_cast<uint16_t>(TIM4->CNT);
+    while (__HAL_ADC_GET_FLAG(&hadc1, ADC_FLAG_EOC) == RESET) {
+        if (static_cast<uint16_t>(TIM4->CNT - start) >= 2000U) {
+            HAL_ADC_Stop(&hadc1);
+            return false;
+        }
+    }
+
+    *reading = static_cast<uint16_t>(HAL_ADC_GetValue(&hadc1));
+    return HAL_ADC_Stop(&hadc1) == HAL_OK;
+}
+
+namespace {
+
 void MX_GPIO_Init(void)
 {
     GPIO_InitTypeDef GPIO_InitStruct = {};

@@ -17,4 +17,6 @@ extern TIM_HandleTypeDef htim2;
 
 void Hardware_Init(void);
 bool Hardware_VectorTableOk(void);
+bool DHT22_Read(float *temperature, float *humidity);
+bool LDR_ReadRaw(uint16_t *reading);
 void Buzzer_Set(bool enabled);

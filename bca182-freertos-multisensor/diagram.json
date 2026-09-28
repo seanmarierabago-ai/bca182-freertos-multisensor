@@ -16,7 +16,7 @@
     ["bluepill1:A10", "$serialMonitor:TX", "", []],
     ["dht1:VCC", "bluepill1:3V3", "red", []],
     ["dht1:GND", "bluepill1:GND", "black", []],
-    ["dht1:SDA", "bluepill1:A1", "cyan", []],
+    ["dht1:SDA", "bluepill1:B0", "cyan", []],
     ["ldr1:VCC", "bluepill1:3V3", "red", []],
     ["ldr1:GND", "bluepill1:GND", "black", []],
     ["ldr1:AO", "bluepill1:A0", "yellow", []],
